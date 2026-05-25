@@ -1,0 +1,17 @@
+llm:
+  base_url: "https://api.deepseek.com/v1"
+  api_key: "${DEEPSEEK_API_KEY}"
+  model: "deepseek-chat"
+  embedding_model: ""
+  temperature: 0.8
+  max_tokens: 512
+
+qdrant:
+  enabled: false
+  url: "http://localhost:6333"
+
+data_dir: "backend/data"
+
+server:
+  host: "127.0.0.1"
+  port: 8000

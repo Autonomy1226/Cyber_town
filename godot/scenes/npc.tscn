@@ -1,0 +1,75 @@
+[gd_scene load_steps=5 format=3 uid="uid://npcbase001"]
+
+[ext_resource type="Script" path="res://scripts/npc.gd" id="1_script"]
+[ext_resource type="Texture2D" path="res://assets/sprites/npc_zara.png" id="2_sprite"]
+
+[sub_resource type="CircleShape2D" id="npc_body"]
+radius = 14.0
+
+[sub_resource type="CircleShape2D" id="npc_interact"]
+radius = 60.0
+
+[node name="CyberNPC" type="CharacterBody2D"]
+collision_layer = 2
+collision_mask = 3
+motion_mode = 1
+script = ExtResource("1_script")
+npc_id = ""
+npc_name = "???"
+npc_role = ""
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="."]
+shape = SubResource("npc_body")
+
+[node name="Sprite2D" type="Sprite2D" parent="."]
+texture = ExtResource("2_sprite")
+centered = true
+
+[node name="NameLabel" type="Label" parent="."]
+offset_left = -50.0
+offset_top = -36.0
+offset_right = 50.0
+offset_bottom = -22.0
+text = "???"
+horizontal_alignment = 1
+theme_override_font_sizes/font_size = 11
+theme_override_colors/font_color = Color(1, 1, 1, 1)
+theme_override_colors/font_outline_color = Color(0, 0, 0, 1)
+theme_override_constants/outline_size = 3
+
+[node name="ActivityLabel" type="Label" parent="."]
+visible = false
+offset_left = -64.0
+offset_top = -52.0
+offset_right = 64.0
+offset_bottom = -40.0
+text = ""
+horizontal_alignment = 1
+theme_override_font_sizes/font_size = 9
+theme_override_colors/font_color = Color(1, 0.85, 0.3, 1)
+theme_override_colors/font_outline_color = Color(0, 0, 0, 1)
+theme_override_constants/outline_size = 2
+
+[node name="SpeechBubble" type="Label" parent="."]
+visible = false
+offset_left = -100.0
+offset_top = -88.0
+offset_right = 100.0
+offset_bottom = -58.0
+text = ""
+horizontal_alignment = 1
+autowrap_mode = 2
+theme_override_font_sizes/font_size = 11
+theme_override_colors/font_color = Color(1, 1, 1, 1)
+theme_override_colors/font_outline_color = Color(0, 0, 0, 1)
+theme_override_constants/outline_size = 3
+
+[node name="NavigationAgent2D" type="NavigationAgent2D" parent="."]
+avoidance_enabled = true
+path_desired_distance = 16.0
+target_desired_distance = 12.0
+
+[node name="InteractArea" type="Area2D" parent="."]
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="InteractArea"]
+shape = SubResource("npc_interact")

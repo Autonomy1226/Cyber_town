@@ -1,0 +1,77 @@
+[gd_scene load_steps=2 format=3 uid="uid://dialogueui001"]
+
+[ext_resource type="Script" path="res://scripts/dialogue_ui.gd" id="1_script"]
+
+[node name="DialogueUI" type="CanvasLayer"]
+script = ExtResource("1_script")
+visible = false
+
+[node name="Panel" type="Panel" parent="."]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="VBoxContainer" type="VBoxContainer" parent="Panel"]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+offset_left = 60.0
+offset_top = 40.0
+offset_right = -60.0
+offset_bottom = -40.0
+
+[node name="Header" type="HBoxContainer" parent="Panel/VBoxContainer"]
+
+[node name="NPCName" type="Label" parent="Panel/VBoxContainer/Header"]
+text = "NPC Name"
+theme_override_font_sizes/font_size = 24
+theme_override_colors/font_color = Color(1, 0.85, 0.4, 1)
+
+[node name="Spacer" type="Control" parent="Panel/VBoxContainer/Header"]
+size_flags_horizontal = 3
+
+[node name="FavorabilityLabel" type="Label" parent="Panel/VBoxContainer/Header"]
+text = "FAV: 0"
+theme_override_colors/font_color = Color(0.8, 0.8, 0.8, 1)
+
+[node name="FavorabilityBar" type="ProgressBar" parent="Panel/VBoxContainer/Header"]
+custom_minimum_size = Vector2(120, 16)
+min_value = 0.0
+max_value = 100.0
+value = 50.0
+
+[node name="CloseBtn" type="Button" parent="Panel/VBoxContainer/Header"]
+text = "X"
+theme_override_colors/font_color = Color(1, 0.4, 0.4, 1)
+theme_override_colors/font_hover_color = Color(1, 0.6, 0.6, 1)
+
+[node name="Body" type="ScrollContainer" parent="Panel/VBoxContainer"]
+size_flags_vertical = 3
+custom_minimum_size = Vector2(0, 300)
+
+[node name="HistoryText" type="RichTextLabel" parent="Panel/VBoxContainer/Body"]
+bbcode_enabled = true
+text = ""
+fit_content = true
+scroll_active = false
+size_flags_horizontal = 3
+size_flags_vertical = 3
+theme_override_colors/default_color = Color(0.95, 0.95, 0.95, 1)
+theme_override_colors/font_outline_color = Color(0, 0, 0, 1)
+theme_override_constants/outline_size = 0
+
+[node name="Footer" type="HBoxContainer" parent="Panel/VBoxContainer"]
+
+[node name="InputLine" type="LineEdit" parent="Panel/VBoxContainer/Footer"]
+size_flags_horizontal = 3
+placeholder_text = "Type your message..."
+theme_override_colors/font_color = Color(1, 1, 1, 1)
+theme_override_colors/font_placeholder_color = Color(0.5, 0.5, 0.5, 1)
+
+[node name="SendBtn" type="Button" parent="Panel/VBoxContainer/Footer"]
+text = "Send"
+theme_override_colors/font_color = Color(1, 1, 1, 1)
