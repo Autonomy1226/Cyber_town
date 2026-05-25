@@ -9,11 +9,138 @@ router = APIRouter(prefix="/api", tags=["npc_chat"])
 _npc_service = None
 _action_service = None
 
+# Cached banter: {(npc_a, npc_b): [(line_a, line_b), ...]}
+_banter_cache: dict[tuple[str, str], list[tuple[str, str]]] = {}
+# NPC chat log: list of {timestamp, npc_a, npc_b, line_a, line_b, source}
+_chat_log: list[dict] = []
+_MAX_LOG = 50
+
+# Fallback Chinese banter — used if LLM generation fails
+FALLBACK: dict[tuple[str, str], list[tuple[str, str]]] = {
+    ("npc_zara", "npc_kron"): [
+        ("Kron，Jira 上的 P0 挂了三天了。", "*惊醒* 啊？哪个 P0？……GC 卡住了我在修。真的。"),
+        ("你说 Q4 搞定，哪个 Q4？", "*戳屏幕* 协程和支付网关有个竞态。重启能顶一阵。"),
+    ],
+    ("npc_zara", "npc_nyx"): [
+        ("Nyx，休息室摄像头是你装的？", "*面无波动* 不是。那是咖啡机自带的。我装的在三楼。"),
+        ("你觉得 Vex 这人怎么样？", "*沉默三秒* 他的 AR 眼镜每 15 秒截图一次。我屏蔽了我的办公室。"),
+    ],
+    ("npc_zara", "npc_vex"): [
+        ("Vex，营销预算又超了。", "*微笑* 那不叫超支，叫前瞻性品牌投资。措辞很重要。"),
+        ("Q4 财报你打算怎么跟董事会说？", "*压低声音* 我们在重新定义盈利指标。搞不定你想顶 HR 的班吗？"),
+    ],
+    ("npc_zara", "npc_pip"): [
+        ("Pip，你又蹲服务器上了。", "Zara！！嘘——我在查 Kron 说的那个内存泄漏。顺便偷点零食，你要吗？"),
+        ("Pip，三楼饮水机的事你听说了？", "OMG 你知道什么了？！等等你先别说，让我猜——跟 Nyx 有关对吧？"),
+    ],
+    ("npc_kron", "npc_nyx"): [
+        ("Nyx……你肯定知道我固件滞后了多少天。", "*面无表情* 三个月零四天。工资系统里那个后门——补上。"),
+        ("Nyx，你说内部有异常流量……", "已定位到你的终端。不是你——你是跳板。已清理。下次更新固件。"),
+    ],
+    ("npc_kron", "npc_vex"): [
+        ("Vex，你那个'增长黑客'……合法吗？", "*眨眼* 合法是一个光谱。我们在光谱正确那端。大概。"),
+        ("Vex，3.2 版加的那个'用户反馈模块'……", "*低声* 那不叫后门，叫主动用户参与通道。九成合规。"),
+    ],
+    ("npc_kron", "npc_pip"): [
+        ("Kron！！你固件又三个月没更新了！！", "*不抬头* 更新让我偏头痛。支付系统是稳定的……大概。"),
+        ("omg Kron 你猜我在服务器日志里发现什么了", "*疯狂敲键盘* Pip 如果跟 Nyx 的加密流量有关，我不想知道。"),
+        ("Kron 我帮你把工资系统漏洞修了！不用谢！", "*终于抬头* ……那个后门三年没人发现。你怎么找到的？"),
+    ],
+    ("npc_nyx", "npc_vex"): [
+        ("Vex，你的 AR 眼镜在截图。关掉。", "*投降姿势* 好了关了。但你的微表情数据很有市场价值。"),
+        ("再往我的安全报告塞营销术语，浏览记录贴茶水间。", "*收起笑容* ……你不会。……你会。好吧成交。"),
+        ("你的办公室有我装的一个音频采集器。当提醒。", "*脸色变了* 你到底装了多少？——算了，我不想知道。"),
+    ],
+    ("npc_nyx", "npc_pip"): [
+        ("Nyx……看你邮件不是故意的。诊断需要。", "*盯五秒* 我知道。真正敏感的信息我已经转移了。"),
+        ("Nyx 你右手那个 EMP 发射器是真的吗？！", "*冷眼* 测试我？我可以演示。对准你的零食库存。"),
+    ],
+    ("npc_vex", "npc_pip"): [
+        ("Vex！你说我的'个人品牌'能'变现'是什么意思？！", "*调 AR 眼镜* Pip！会修服务器的网红——爆款潜质。合作一波？"),
+        ("Vex 你让我在别人电脑装的那个'行为分析工具'……", "*打断* 嘘——那叫客户体验优化套件。改名后合规部通过了。"),
+    ],
+}
+
+ALL_NPC_IDS = ["npc_zara", "npc_kron", "npc_nyx", "npc_vex", "npc_pip"]
+
+# All 10 unique NPC pairs
+NPC_PAIRS = [
+    ("npc_zara", "npc_kron"), ("npc_zara", "npc_nyx"), ("npc_zara", "npc_vex"), ("npc_zara", "npc_pip"),
+    ("npc_kron", "npc_nyx"), ("npc_kron", "npc_vex"), ("npc_kron", "npc_pip"),
+    ("npc_nyx", "npc_vex"), ("npc_nyx", "npc_pip"),
+    ("npc_vex", "npc_pip"),
+]
+
 
 def init(npc_service, action_service):
     global _npc_service, _action_service
     _npc_service = npc_service
     _action_service = action_service
+
+
+async def generate_all_banter():
+    """Called once at startup. Generates fresh banter for all NPC pairs via LLM in parallel."""
+    global _banter_cache
+    logger = logging.getLogger("cybertown.npc_chat")
+
+    # Immediately use fallback so server is ready instantly
+    _banter_cache = dict(FALLBACK)
+
+    llm = _npc_service._llm_client if _npc_service else None
+    if not llm or not llm._config.api_key:
+        logger.info("No LLM configured, using fallback banter (%d pairs)", len(_banter_cache))
+        return
+
+    logger.info("Starting parallel banter generation for %d NPC pairs...", len(NPC_PAIRS))
+
+    async def generate_pair(a_id, b_id):
+        try:
+            agent_a = _npc_service.get_agent(a_id)
+            agent_b = _npc_service.get_agent(b_id)
+        except KeyError:
+            return
+
+        prompt = f"""你是赛博朋克办公室的叙事生成器。为下面两个角色写 5 组简短的碰面对话（每人一句）。所有对话必须用中文。每句话 5-20 个字。
+
+角色A: {agent_a.profile.name} ({agent_a.profile.role})
+性格: {', '.join(agent_a.profile.personality_traits)}
+说话: {agent_a.profile.speech_style}
+
+角色B: {agent_b.profile.name} ({agent_b.profile.role})
+性格: {', '.join(agent_b.profile.personality_traits)}
+说话: {agent_b.profile.speech_style}
+
+输出纯JSON数组（不要markdown，不要说别的）：
+[
+  ["A说的话（中文）", "B说的话（中文）"],
+  ...
+]"""
+
+        try:
+            raw = await llm.chat([
+                {"role": "system", "content": "Output ONLY valid JSON array of Chinese dialogue. No markdown. No explanation."},
+                {"role": "user", "content": prompt},
+            ])
+            raw = raw.strip()
+            if raw.startswith("```"):
+                import re
+                raw = re.sub(r'^```\w*\n?', '', raw)
+                raw = re.sub(r'\n?```$', '', raw)
+            lines = json.loads(raw)
+            pairs = [(str(p[0]), str(p[1])) for p in lines if len(p) == 2]
+            if pairs:
+                _banter_cache[(a_id, b_id)] = pairs
+                logger.info("Generated %d lines for %s <-> %s", len(pairs), a_id, b_id)
+        except Exception as e:
+            logger.warning("Banter failed for %s<->%s: %s", a_id, b_id, e)
+
+    # Run all pairs in parallel
+    import asyncio
+    tasks = [generate_pair(a, b) for a, b in NPC_PAIRS]
+    await asyncio.gather(*tasks)
+
+    total = sum(len(v) for v in _banter_cache.values())
+    logger.info("Banter generation done: %d lines across %d pairs", total, len(_banter_cache))
 
 
 class NpcChatRequest(BaseModel):
@@ -26,77 +153,68 @@ class NpcChatResponse(BaseModel):
     npc_b_line: str
 
 
-# All banter in Chinese — 3-5 lines per pair for variety
-BANTER: dict[tuple[str, str], list[tuple[str, str]]] = {
-    ("npc_zara", "npc_pip"): [
-        ("Pip，你又蹲服务器上了。", "Zara！！嘘——我在查 Kron 说的那个内存泄漏。顺便偷点零食，你要吗？"),
-        ("Pip，三楼饮水机的事你听说了？", "OMG 你知道什么了？！等等你先别说，让我猜——跟 Nyx 有关对吧？"),
-        ("Pip，别以为我不知道你在监控所有人的聊天记录。", "那是诊断需要！！！……好吧，Vex 昨天跟 CEO 说预算的事你感兴趣吗？"),
-        ("你怎么又在我的办公室？", "你这里有全楼最好的 wifi！而且我想问你 Kron 最近是不是又没睡觉。"),
-    ],
-    ("npc_zara", "npc_kron"): [
-        ("Kron，Jira 上的 P0 挂了三天了。你看看。", "*猛地惊醒* 啊？！哪个 P0？……哦那个，GC 卡住了我在修。真的在修。"),
-        ("你上次说 Q4 搞定，到底哪个 Q4？", "*戳着屏幕* 看见没——协程调度和支付网关之间有个竞态条件。重启能顶一阵子。"),
-        ("Kron，你多久没睡了？", "睡？睡眠是给不需要改线上 bug 的人的奢侈品。顺便说，你那个 Slack 加密频道我用了一层额外加密，不客气。"),
-    ],
-    ("npc_zara", "npc_nyx"): [
-        ("Nyx，休息室那个摄像头是你装的？", "*面无表情* 不是。那是咖啡机自带的。我装的那个在三楼天花板。"),
-        ("Nyx，最近安保审计查出什么了？", "*递过一份加密文件* 自己看。有人在用打印机传加密数据。不是 Kron。"),
-        ("你觉得 Vex 这个人怎么样？", "*沉默三秒* 他的 AR 隐形眼镜每 15 秒截图一次。我已经屏蔽了我的办公室。"),
-    ],
-    ("npc_zara", "npc_vex"): [
-        ("Vex，你的营销预算又超了 200%。", "*灿烂微笑* 那不叫超支，Zara。那叫'前瞻性品牌投资'。措辞很重要，朋友！"),
-        ("你的 AR 眼镜在录音。我左眼能检测到。", "*故作惊讶* 这是生产力工具！提升效率的！……行吧，关了关了。"),
-        ("Q4 财报你打算怎么跟董事会解释？", "*压低声音* 我们正在'重新定义盈利指标'。搞定了就是创举，搞不定……你想顶 HR 的班吗？"),
-    ],
-    ("npc_pip", "npc_kron"): [
-        ("Kron！！你固件又三个月没更新了！！", "*不抬头* 更新补丁让我偏头痛。而且现在支付系统是稳定的……大概吧。"),
-        ("omg Kron 你猜我昨天在服务器日志里发现什么了", "*疯狂敲键盘* Pip 如果又跟 Nyx 的加密流量有关，我不想知道。"),
-        ("Kron 我帮你把工资系统的漏洞修了！不用谢！", "*终于抬头了* ……那个后门我留了三年都没人发现，你怎么找到的？"),
-        ("你的神经接口是不是又发热了？要我帮你加个散热片吗？", "不是发热的问题……是代码本身在嫌弃我。别碰接口，上次碰完我看到了不该看的。"),
-    ],
-    ("npc_pip", "npc_nyx"): [
-        ("Nyx……那个我看你邮件不是故意的。诊断需要。", "*盯着 Pip 看了五秒* 我知道。我已经把真正的敏感信息放别的地方了。"),
-        ("Nyx 你右手那个 EMP 是真的吗？！", "测试我？我可以演示。对准你的零食库存。"),
-        ("Nyx，我发现你知道的那个'内鬼'……其实是你自己设计的测试对吧？", "*眯起眼睛* ……聪明。别告诉任何人。特别是 Vex。"),
-    ],
-    ("npc_pip", "npc_vex"): [
-        ("Vex！我上次的'个人品牌'你说能'变现'是什么意思？！", "*调整 AR 眼镜* Pip！一个会修服务器的网红——爆款潜质。咱们合作一波？"),
-        ("Vex 你上次让我在别人电脑上装的那个'用户行为分析工具'……", "*立刻打断* 嘘——那叫'客户体验优化套件'。改名之后合规部就通过了。"),
-    ],
-    ("npc_kron", "npc_nyx"): [
-        ("Nyx……我打赌你知道我固件补丁滞后了多少天。", "*面无表情* 三个月零四天。还有你工资系统里那个后门——补上。明天之前。"),
-        ("Nyx，上次审计你说'怀疑内部有异常流量'……", "已经定位到你的终端。不是怀疑你——是你被当成跳板了。我已经清理了。下次更新固件。"),
-    ],
-    ("npc_kron", "npc_vex"): [
-        ("Vex，你上次那个'社交媒体增长黑客'……合法吗？", "*眨眼* 合法是一个光谱，Kron。我们坐在光谱的正确那一端。大概。"),
-        ("Vex 你让我往 3.2 版本加的那个'用户反馈收集模块'……", "*低声* 那个不叫后门。那个叫'主动用户参与通道'。完全合规。九成合规。"),
-    ],
-    ("npc_nyx", "npc_vex"): [
-        ("Vex，你的 AR 隐形眼镜每一帧都在截图。关掉。", "*投降姿势* 好好好关了——但我得说，你的微表情数据真的很有市场价值。"),
-        ("Vex，你再往我的安全报告里塞营销术语我就把你的浏览记录打印出来贴在茶水间。", "*收起笑容* ……你不会。……你会。好吧，成交，别贴。"),
-        ("你的办公室有一台我装的音频采集器。把它当成对你的……提醒。", "*脸色变了* ……你到底装了多少个？——算了，我不想知道。"),
-    ],
-}
-
-
 @router.post("/npc/npc-chat", response_model=NpcChatResponse)
 async def npc_chat(request: NpcChatRequest):
-    logger = logging.getLogger("cybertown.npc_chat")
-    logger.info(json.dumps({
-        "event": "npc_chat_request",
-        "npc_id_a": request.npc_id_a,
-        "npc_id_b": request.npc_id_b,
-    }))
-
+    import time
     pair = (request.npc_id_a, request.npc_id_b)
     reverse = (request.npc_id_b, request.npc_id_a)
-    lines_list = BANTER.get(pair) or BANTER.get(reverse)
+    a_line = b_line = ""
+    source = "cache"
 
-    if lines_list:
-        a_line, b_line = random.choice(lines_list)
-        if pair not in BANTER:
-            a_line, b_line = b_line, a_line
-        return NpcChatResponse(npc_a_line=a_line, npc_b_line=b_line)
+    # --- 15% chance: use LLM for fresh dialogue ---
+    if random.random() < 0.15 and _npc_service and _npc_service._llm_client:
+        llm = _npc_service._llm_client
+        if llm._config.api_key:
+            try:
+                agent_a = _npc_service.get_agent(request.npc_id_a)
+                agent_b = _npc_service.get_agent(request.npc_id_b)
+                prompt = f"""{agent_a.profile.name}和{agent_b.profile.name}在办公室碰面了。给他们写一句简短的对话（各一句，中文）。
+{agent_a.profile.name}性格: {', '.join(agent_a.profile.personality_traits)}
+{agent_b.profile.name}性格: {', '.join(agent_b.profile.personality_traits)}
+输出纯JSON: ["A的话", "B的话"]"""
+                raw = await llm.chat([
+                    {"role": "system", "content": "Output ONLY a JSON array of 2 strings. No markdown."},
+                    {"role": "user", "content": prompt},
+                ])
+                raw = raw.strip().strip("```").strip()
+                lines = json.loads(raw)
+                if len(lines) == 2:
+                    a_line, b_line = str(lines[0]), str(lines[1])
+                    source = "llm"
+            except Exception:
+                pass  # fall through to cache
 
-    return NpcChatResponse(npc_a_line="……", npc_b_line="……")
+    # --- Cache / Fallback ---
+    if not a_line:
+        lines = _banter_cache.get(pair) or _banter_cache.get(reverse)
+        if lines:
+            a_line, b_line = random.choice(lines)
+            if pair not in _banter_cache:
+                a_line, b_line = b_line, a_line
+        else:
+            fb = FALLBACK.get(pair) or FALLBACK.get(reverse)
+            if fb:
+                a_line, b_line = random.choice(fb)
+                if pair not in FALLBACK:
+                    a_line, b_line = b_line, a_line
+            else:
+                a_line, b_line = "……", "……"
+
+    # Log it
+    _chat_log.append({
+        "timestamp": time.time(),
+        "npc_a": request.npc_id_a,
+        "npc_b": request.npc_id_b,
+        "line_a": a_line,
+        "line_b": b_line,
+        "source": source,
+    })
+    if len(_chat_log) > _MAX_LOG:
+        _chat_log.pop(0)
+
+    return NpcChatResponse(npc_a_line=a_line, npc_b_line=b_line)
+
+
+@router.get("/npc/chat-log")
+async def get_chat_log():
+    return {"entries": list(reversed(_chat_log))}

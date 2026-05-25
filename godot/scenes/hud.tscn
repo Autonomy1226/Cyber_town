@@ -1,0 +1,50 @@
+[gd_scene format=3 uid="uid://hud001"]
+
+[ext_resource type="Script" path="res://scripts/hud.gd" id="1_script"]
+
+[node name="HUD" type="CanvasLayer"]
+script = ExtResource("1_script")
+
+[node name="MoneyPanel" type="Panel" parent="."]
+anchors_preset = 1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -160.0
+offset_top = 8.0
+offset_right = -8.0
+offset_bottom = 40.0
+
+[node name="MoneyLabel" type="Label" parent="MoneyPanel"]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 10.0
+offset_top = 4.0
+offset_right = -10.0
+offset_bottom = -4.0
+text = "$50"
+horizontal_alignment = 2
+theme_override_font_sizes/font_size = 18
+theme_override_colors/font_color = Color(0.3, 1, 0.3, 1)
+
+[node name="HintPanel" type="Panel" parent="."]
+anchors_preset = 13
+anchor_left = 0.5
+anchor_bottom = 1.0
+offset_left = -200.0
+offset_top = -42.0
+offset_right = 200.0
+offset_bottom = -6.0
+
+[node name="HintLabel" type="Label" parent="HintPanel"]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 16.0
+offset_top = 4.0
+offset_right = -16.0
+offset_bottom = -4.0
+text = "[E] 对话  [F] 互动  [I] 背包"
+horizontal_alignment = 1
+theme_override_font_sizes/font_size = 13
+theme_override_colors/font_color = Color(0.8, 0.8, 0.8, 1)

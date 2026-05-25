@@ -1,0 +1,59 @@
+[gd_scene format=3 uid="uid://load001"]
+
+[ext_resource type="Script" path="res://scripts/loading_screen.gd" id="1_script"]
+
+[node name="LoadingScreen" type="CanvasLayer"]
+script = ExtResource("1_script")
+
+[node name="Bg" type="ColorRect" parent="."]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+color = Color(0.04, 0.04, 0.06, 1)
+
+[node name="VBox" type="VBoxContainer" parent="."]
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -300.0
+offset_top = -100.0
+offset_right = 300.0
+offset_bottom = 100.0
+
+[node name="Title" type="Label" parent="VBox"]
+text = "NexCorp / 赛博小镇"
+horizontal_alignment = 1
+theme_override_font_sizes/font_size = 32
+theme_override_colors/font_color = Color(0.2, 0.9, 1, 1)
+
+[node name="Spinner" type="Label" parent="VBox"]
+text = "正在连接..."
+horizontal_alignment = 1
+theme_override_font_sizes/font_size = 16
+theme_override_colors/font_color = Color(0.6, 0.6, 0.6, 1)
+
+[node name="TipBg" type="Panel" parent="VBox"]
+custom_minimum_size = Vector2(0, 80)
+
+[node name="TipLabel" type="Label" parent="VBox/TipBg"]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 16.0
+offset_top = 10.0
+offset_right = -16.0
+offset_bottom = -10.0
+text = ""
+horizontal_alignment = 1
+autowrap_mode = 3
+theme_override_font_sizes/font_size = 13
+theme_override_colors/font_color = Color(0.85, 0.85, 0.7, 1)
+
+[node name="ProgressBar" type="ProgressBar" parent="VBox"]
+custom_minimum_size = Vector2(0, 6)
+min_value = 0.0
+max_value = 1.0
+value = 0.0
+show_percentage = false

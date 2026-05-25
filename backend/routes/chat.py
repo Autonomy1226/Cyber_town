@@ -37,7 +37,13 @@ async def chat(request: ChatRequest):
     fav = _npc_service.get_favorability(request.npc_id, request.player_id)
     agent.favorability = fav
 
+    # Preload history into short-term memory if this is the first chat this session
+    _npc_service.preload_memory(request.npc_id, request.player_id)
+
     response = await agent.respond(request.message, request.context)
+
+    # Persist favorability
+    _npc_service.save_favorability(request.player_id, request.npc_id)
 
     elapsed = time.perf_counter() - start
 

@@ -14,6 +14,8 @@ var _player: CharacterBody2D
 var _chat_cooldowns: Dictionary = {}
 var _chat_pending: Dictionary = {}
 var _invite_timer: float = 0.0
+var _prox_timer: float = 0.0
+var _seeker_timer: float = 0.0
 
 func _ready():
 	_npc_container = get_node("../NPCs")
@@ -25,6 +27,7 @@ func _scan_npcs():
 	for child in _npc_container.get_children():
 		if child is CyberNPC:
 			_npc_nodes.append(child)
+	Globals.npc_list = _npc_nodes.duplicate()
 	_initialized = true
 	ApiClient.fetch_npc_actions(_on_actions_received)
 
@@ -33,24 +36,45 @@ func _process(delta: float):
 	if _timer <= 0:
 		_timer = POLL_INTERVAL
 		ApiClient.fetch_npc_actions(_on_actions_received)
+	_dispatch_next_action()
 
-	_update_player_seekers(delta)
-	_check_npc_proximity(delta)
+	_seeker_timer -= delta
+	if _seeker_timer <= 0:
+		_seeker_timer = 0.5
+		_update_player_seekers(0.5)
+
+	_prox_timer -= delta
+	if _prox_timer <= 0:
+		_prox_timer = 0.5
+		_check_npc_proximity(0.5)
+
 	_check_invite_timeout(delta)
+
+var _pending_actions: Array = []
+var _dispatch_idx: int = 0
 
 func _on_actions_received(data, error: bool):
 	if error:
 		return
-	var actions_list = data.get("actions", [])
-	for action in actions_list:
-		var npc_id = action.get("npc_id", "")
-		var node = _find_npc(npc_id)
-		if node:
-			if action.get("action_type") == "talk_to_player":
-				# Override target to player position
-				var pos_list = [_player.global_position.x, _player.global_position.y]
-				action["target_position"] = pos_list
-			node.do_action(action)
+	_pending_actions = data.get("actions", [])
+	_dispatch_idx = 0
+
+func _dispatch_next_action():
+	"""Apply one action per frame to avoid pathfinding spike."""
+	if _dispatch_idx >= _pending_actions.size():
+		return
+	var action = _pending_actions[_dispatch_idx]
+	_dispatch_idx += 1
+	var npc_id = action.get("npc_id", "")
+	var node = _find_npc(npc_id)
+	if node:
+		var atype = action.get("action_type", "")
+		if atype == "talk_to_player":
+			var pos_list = [_player.global_position.x, _player.global_position.y]
+			action["target_position"] = pos_list
+		elif atype == "command":
+			node.say(action.get("dialogue_line", ""), 5.0)
+		node.do_action(action)
 
 func _find_npc(npc_id: String) -> CyberNPC:
 	for npc in _npc_nodes:
@@ -62,22 +86,16 @@ func _update_player_seekers(delta: float):
 	for npc in _npc_nodes:
 		if npc.current_action.get("action_type") != "talk_to_player":
 			continue
-
 		var dist = npc.global_position.distance_to(_player.global_position)
-
 		if npc.current_state == CyberNPC.State.INVITING:
-			# Player moved away — resume following
 			if dist > INVITE_RANGE + 40:
 				npc.set_state(CyberNPC.State.MOVING)
 				npc._nav_agent.target_position = _player.global_position
 				npc._speech_bubble.visible = false
 				npc._show_activity("找你呢别跑...")
 			continue
-
 		if npc.current_state == CyberNPC.State.MOVING:
-			# Keep updating target to player position
 			npc._nav_agent.target_position = _player.global_position
-
 			if dist < INVITE_RANGE and Globals.inviting_npc == null:
 				npc.set_state(CyberNPC.State.INVITING)
 				npc._show_activity("想跟你聊聊...")
@@ -100,7 +118,6 @@ func _decline_invite():
 	npc.say("算了，下次吧。", 3.0)
 	npc.set_state(CyberNPC.State.IDLE)
 	npc._show_activity("")
-	# Give NPC a new action to walk away
 	ApiClient.fetch_npc_actions(func(data, err):
 		if not err:
 			var actions = data.get("actions", [])
@@ -110,7 +127,6 @@ func _decline_invite():
 					return
 	)
 
-# --- NPC-to-NPC chat (unchanged) ---
 func _pair_key(a: String, b: String) -> String:
 	return a + "_" + b if a < b else b + "_" + a
 

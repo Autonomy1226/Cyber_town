@@ -1,5 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+import asyncio
 from contextlib import asynccontextmanager
 import yaml
 import os
@@ -7,8 +8,9 @@ import os
 from helloagents import LLMClient, LLMConfig
 from backend.services.npc_service import NPCService
 from backend.services.log_service import LogService
-from backend.routes import chat, npc, logs, actions, npc_chat
+from backend.routes import chat, npc, logs, actions, npc_chat, history, player, objects
 from backend.services.action_service import ActionService
+from backend.services.economy_service import EconomyService
 
 
 def load_config(path: str = "config.yaml") -> dict:
@@ -37,8 +39,10 @@ async def lifespan(app: FastAPI):
         llm_client,
         use_qdrant=cfg.get("qdrant", {}).get("enabled", False),
         qdrant_url=cfg.get("qdrant", {}).get("url", ""),
+        data_dir=data_dir,
     )
 
+    economy_service = EconomyService()
     action_service = ActionService()
 
     chat.init(npc_service, log_service)
@@ -46,6 +50,10 @@ async def lifespan(app: FastAPI):
     logs.init(log_service)
     actions.init(action_service)
     npc_chat.init(npc_service, action_service)
+    player.init(economy_service)
+    objects.init(economy_service)
+    # Fire and forget — server ready instantly, banter generates in background
+    asyncio.create_task(npc_chat.generate_all_banter())
 
     app.state.npc_service = npc_service
     app.state.log_service = log_service
@@ -71,11 +79,13 @@ def create_app() -> FastAPI:
     )
 
     app.include_router(chat.router)
-    app.include_router(chat.router)
     app.include_router(actions.router)
     app.include_router(npc_chat.router)
     app.include_router(npc.router)
     app.include_router(logs.router)
+    app.include_router(history.router)
+    app.include_router(player.router)
+    app.include_router(objects.router)
 
     return app
 

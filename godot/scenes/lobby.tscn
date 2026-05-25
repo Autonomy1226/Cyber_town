@@ -1,0 +1,22 @@
+[gd_scene load_steps=4 format=3 uid="uid://lobby001"]
+
+[ext_resource type="Script" path="res://scripts/lobby.gd" id="1_script"]
+[ext_resource type="Texture2D" path="res://assets/sprites/tiles/floor.png" id="2_floor"]
+
+[sub_resource type="TileSetAtlasSource" id="atlas_floor"]
+texture = ExtResource("2_floor")
+texture_region_size = Vector2i(32, 32)
+
+[sub_resource type="TileSet" id="tileset"]
+sources/0 = SubResource("atlas_floor")
+
+[node name="Lobby" type="Node2D"]
+script = ExtResource("1_script")
+
+[node name="GroundLayer" type="TileMapLayer" parent="."]
+tile_set = SubResource("tileset")
+
+[node name="SpawnPoints" type="Node2D" parent="."]
+
+[node name="from_office" type="Marker2D" parent="SpawnPoints"]
+position = Vector2(640, 360)

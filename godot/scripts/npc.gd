@@ -21,15 +21,17 @@ var current_action: Dictionary = {}
 
 var _speech_timer: float = 0.0
 var is_chatting: bool = false
+var _stuck_timer: float = 0.0
+var _last_pos: Vector2 = Vector2.ZERO
 
 func _ready():
 	collision_layer = 2
 	collision_mask = 3
 	motion_mode = MOTION_MODE_FLOATING
 	add_to_group("npc")
-	_interact_area.add_to_group("npc")
 	_name_label.text = npc_name
 	_nav_agent.velocity_computed.connect(_on_velocity_computed)
+	_last_pos = global_position
 
 	var bubble_bg = StyleBoxFlat.new()
 	bubble_bg.bg_color = Color(0.05, 0.05, 0.08, 0.88)
@@ -47,6 +49,7 @@ func _process(delta: float):
 		if _speech_timer <= 0:
 			_speech_bubble.visible = false
 			is_chatting = false
+			_show_activity(current_action.get("dialogue_line", ""))
 
 func do_action(action: Dictionary):
 	current_action = action
@@ -62,7 +65,7 @@ func do_action(action: Dictionary):
 
 	if action_type == "idle":
 		set_state(State.IDLE)
-	elif action_type in ["go_to", "wander", "talk_to", "talk_to_player"]:
+	elif action_type in ["go_to", "wander", "talk_to", "talk_to_player", "command"]:
 		set_state(State.MOVING)
 		_nav_agent.target_position = Vector2(target_pos[0], target_pos[1])
 
@@ -73,10 +76,10 @@ func say(text: String, duration: float = 5.0):
 	_speech_timer = duration
 	is_chatting = true
 
-func _physics_process(_delta: float):
+func _physics_process(delta: float):
 	var vel = Vector2.ZERO
 
-	if current_state == State.MOVING and not _nav_agent.is_navigation_finished():
+	if current_state == State.MOVING:
 		var next_pos = _nav_agent.get_next_path_position()
 		vel = (next_pos - global_position).normalized() * move_speed
 		var dist = global_position.distance_to(_nav_agent.target_position)
@@ -92,13 +95,11 @@ func _on_velocity_computed(safe_velocity: Vector2):
 	move_and_slide()
 
 func _spread_out():
-	var tree = get_tree()
-	if not tree:
-		return
-	var all_npcs = tree.get_nodes_in_group("npc")
+	# Use cached list from behavior controller (avoids scene tree query every call)
+	var others = Globals.npc_list if Globals.npc_list else []
 	var push = Vector2.ZERO
-	for other in all_npcs:
-		if other == self:
+	for other in others:
+		if other == self or not is_instance_valid(other):
 			continue
 		var d = global_position.distance_to(other.global_position)
 		if d < 32.0 and d > 0.1:
@@ -110,7 +111,6 @@ func set_state(new_state: State):
 	current_state = new_state
 	if new_state == State.IDLE:
 		velocity = Vector2.ZERO
-		_activity_label.visible = false
 
 func _show_activity(text: String):
 	if text.is_empty():

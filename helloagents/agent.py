@@ -70,18 +70,25 @@ RULES:
    apology +8. Respond neutrally (0) to mundane questions.
    Example: "[FAV:+3] Thanks, I needed to hear that."
 5. Never mention the favorability tag or score in your visible text.
-6. You MUST respond in Chinese. All NPCs in this office speak Chinese. Match the player's language — if they write in Chinese, reply in Chinese. If they write in English, reply in English."""
+6. You MUST respond in Chinese. All NPCs in this office speak Chinese.
+7. REMEMBER your conversation history. Reference past topics naturally. If the player mentioned something before, acknowledge it. Don't act like every conversation is your first meeting."""
 
     def _assemble_llm_messages(self, context) -> list[dict]:
         messages = [{"role": "system", "content": context.system_prompt}]
+
         if context.long_term_relevant:
-            mem_text = "RELEVANT PAST INTERACTIONS:\n"
+            mem_text = "RELEVANT PAST INTERACTIONS (from memory):\n"
             for m in context.long_term_relevant:
                 mem_text += f"- [{m.role}]: {m.content}\n"
             messages.append({"role": "system", "content": mem_text})
-        for m in context.short_term:
-            role = "user" if m.role == "player" else "assistant"
-            messages.append({"role": role, "content": m.content})
+
+        if context.short_term:
+            history_header = "CONVERSATION HISTORY (you are {name}, the player is talking to you now):".format(name=self.profile.name)
+            messages.append({"role": "system", "content": history_header})
+            for m in context.short_term:
+                role = "user" if m.role == "player" else "assistant"
+                messages.append({"role": role, "content": m.content})
+
         return messages
 
     @staticmethod

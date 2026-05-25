@@ -21,6 +21,13 @@ var _current_npc_id: String = ""
 var _message_history: Array = []
 var _npc_histories: Dictionary = {}
 var _npc_names: Dictionary = {}
+var _npc_colors = {
+	"npc_zara": Color(0.78, 0.24, 0.24, 1),
+	"npc_kron": Color(0.24, 0.71, 0.24, 1),
+	"npc_nyx":  Color(0.16, 0.16, 0.16, 1),
+	"npc_vex":  Color(0.78, 0.63, 0.16, 1),
+	"npc_pip":  Color(0.86, 0.47, 0.86, 1),
+}
 
 @onready var _panel: Panel = $Panel
 @onready var _npc_name_label: Label = $Panel/VBoxContainer/Header/NPCName
@@ -34,19 +41,30 @@ var _npc_names: Dictionary = {}
 func open_dialogue(npc_id: String, on_close: Callable):
 	_current_npc_id = npc_id
 
-	# Restore or create history for this NPC
+	# Restore from memory if we already loaded this session
 	if _npc_histories.has(npc_id):
 		_message_history = _npc_histories[npc_id]
+		_rebuild_display()
+		_post_open(npc_id, on_close)
 	else:
+		# Load from backend
 		_message_history = []
 		_npc_histories[npc_id] = _message_history
+		ApiClient.load_history(npc_id, func(data, err):
+			if not err:
+				var msgs = data.get("messages", [])
+				for m in msgs:
+					_message_history.append({"role": m["role"], "text": m["text"]})
+				_npc_histories[npc_id] = _message_history
+			_rebuild_display()
+			_post_open(npc_id, on_close)
+		)
 
+func _rebuild_display():
 	visible = true
 	_history_rich.clear()
-
-	# Rebuild visible history
 	if _message_history.is_empty():
-		_history_rich.append_text("[color=#888888]--- %s ---[/color]\n\n" % npc_id)
+		_history_rich.append_text("[color=#888888]--- %s ---[/color]\n\n" % _current_npc_id)
 	else:
 		for msg in _message_history:
 			var role = msg["role"]
@@ -55,8 +73,8 @@ func open_dialogue(npc_id: String, on_close: Callable):
 			var prefix = "[你]" if role == "player" else ("[%s]" % _npc_name_label.text if role == "npc" else "[SYS]")
 			_history_rich.append_text("[color=%s]%s[/color] %s\n\n" % [color, prefix, text])
 
+func _post_open(npc_id: String, on_close: Callable):
 	ApiClient.fetch_npc_info(npc_id, _on_npc_info)
-
 	if _npc_names.has(npc_id):
 		_npc_name_label.text = _npc_names[npc_id]
 
@@ -77,6 +95,7 @@ func _on_npc_info(data: Dictionary, error: bool):
 		return
 	var name = data.get("name", "???")
 	_npc_name_label.text = name
+	_npc_name_label.add_theme_color_override("font_color", _npc_colors.get(_current_npc_id, Color.WHITE))
 	_npc_names[_current_npc_id] = name
 	var fav = data.get("current_favorability", 0)
 	_update_favorability_display(fav)
@@ -120,8 +139,17 @@ func _on_chat_response(result: Dictionary, error: bool):
 func _append_message(role: String, text: String):
 	_message_history.append({"role": role, "text": text})
 	var color = "#88ddff" if role == "player" else ("#ffaa66" if role == "npc" else "#aaaaaa")
-	var prefix = "[You]" if role == "player" else ("[%s]" % _npc_name_label.text if role == "npc" else "[SYS]")
+	var prefix = "[你]" if role == "player" else ("[%s]" % _npc_name_label.text if role == "npc" else "[SYS]")
 	_history_rich.append_text("[color=%s]%s[/color] %s\n\n" % [color, prefix, text])
+	# Auto-scroll to latest message
+	await get_tree().process_frame
+	_history_rich.scroll_to_line(_history_rich.get_line_count() - 1)
+	_save_all_history()
+
+func _save_all_history():
+	if _current_npc_id.is_empty():
+		return
+	ApiClient.save_history(_current_npc_id, _message_history, func(_d, _e): pass)
 
 func _update_favorability_display(score: int):
 	var normalized = (score + 100.0) / 200.0 * 100.0

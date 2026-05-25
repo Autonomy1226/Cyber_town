@@ -6,3 +6,14 @@ res://scripts/api_client.gd
 res://scripts/main.gd
 res://scripts/npc.gd
 res://scripts/globals.gd
+res://scenes/inventory_ui.tscn
+res://scenes/object_ui.tscn
+res://scripts/inventory_ui.gd
+res://scenes/loading_screen.tscn
+res://scripts/loading_screen.gd
+res://scripts/object_ui.gd
+res://scenes/hud.tscn
+res://scripts/scene_manager.gd
+res://scripts/lobby.gd
+res://scripts/inspect_ui.gd
+res://scripts/chatlog_ui.gd

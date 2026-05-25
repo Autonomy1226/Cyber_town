@@ -1,0 +1,58 @@
+[gd_scene format=3 uid="uid://invui001"]
+
+[ext_resource type="Script" path="res://scripts/inventory_ui.gd" id="1_script"]
+
+[node name="InventoryUI" type="CanvasLayer"]
+script = ExtResource("1_script")
+visible = false
+
+[node name="Panel" type="Panel" parent="."]
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -220.0
+offset_top = -200.0
+offset_right = 220.0
+offset_bottom = 200.0
+
+[node name="VBoxContainer" type="VBoxContainer" parent="Panel"]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 16.0
+offset_top = 12.0
+offset_right = -16.0
+offset_bottom = -12.0
+
+[node name="TitleBar" type="HBoxContainer" parent="Panel/VBoxContainer"]
+
+[node name="Title" type="Label" parent="Panel/VBoxContainer/TitleBar"]
+text = "背包"
+theme_override_font_sizes/font_size = 22
+theme_override_colors/font_color = Color(1, 0.85, 0.3, 1)
+
+[node name="Spacer" type="Control" parent="Panel/VBoxContainer/TitleBar"]
+size_flags_horizontal = 3
+
+[node name="MoneyLabel" type="Label" parent="Panel/VBoxContainer/TitleBar"]
+text = "$50"
+theme_override_font_sizes/font_size = 18
+theme_override_colors/font_color = Color(0.3, 1, 0.3, 1)
+
+[node name="ItemList" type="ItemList" parent="Panel/VBoxContainer"]
+size_flags_vertical = 3
+theme_override_font_sizes/font_size = 14
+theme_override_colors/font_color = Color(1, 1, 1, 1)
+
+[node name="DescLabel" type="Label" parent="Panel/VBoxContainer"]
+text = ""
+theme_override_font_sizes/font_size = 12
+theme_override_colors/font_color = Color(0.7, 0.7, 0.7, 1)
+
+[node name="CloseHint" type="Label" parent="Panel/VBoxContainer"]
+text = "[I] 关闭"
+horizontal_alignment = 2
+theme_override_font_sizes/font_size = 11
+theme_override_colors/font_color = Color(0.5, 0.5, 0.5, 1)

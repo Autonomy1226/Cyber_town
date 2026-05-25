@@ -6,6 +6,10 @@ const WORLD_H: int = 23
 const NPC_SPEED: float = 80.0
 
 var _npc_scene: PackedScene = preload("res://scenes/npc.tscn")
+var _inv_ui_scene: PackedScene = preload("res://scenes/inventory_ui.tscn")
+var _obj_ui_scene: PackedScene = preload("res://scenes/object_ui.tscn")
+var _loading_scene: PackedScene = preload("res://scenes/loading_screen.tscn")
+var _loading_screen = null
 
 var _npc_defs = [
 	{ "id": "npc_zara", "name": "Zara Chen", "role": "Head of HR",
@@ -21,21 +25,30 @@ var _npc_defs = [
 ]
 
 @onready var _ground_layer: TileMapLayer = $GroundLayer
-@onready var _player: CharacterBody2D = $Player
-@onready var _dialogue_ui = $DialogueUI
 @onready var _nav_region: NavigationRegion2D = $NavigationRegion2D
 @onready var _interest_points: Node2D = $InterestPoints
 @onready var _npc_container: Node2D = $NPCs
 
 func _ready():
-	if _dialogue_ui:
-		_dialogue_ui.visible = false
-		_dialogue_ui.process_mode = Node.PROCESS_MODE_ALWAYS
+	# Show loading screen immediately
+	_loading_screen = _loading_scene.instantiate()
+	add_child(_loading_screen)
 
 	_generate_floor()
 	_setup_navigation()
+	_build_boundaries()
+	_build_doors()
 	_spawn_interest_points()
 	_spawn_npcs()
+	_spawn_ui()
+
+	# Position player at spawn point or default
+	var player = $Player
+	if player and Globals.spawn_marker:
+		var sp = $SpawnPoints.get_node_or_null(Globals.spawn_marker)
+		if sp:
+			player.position = sp.position
+	Globals.spawn_marker = ""
 
 	ApiClient.fetch_npcs(_on_npc_list_received)
 
@@ -43,6 +56,59 @@ func _generate_floor():
 	for x in range(WORLD_W):
 		for y in range(WORLD_H):
 			_ground_layer.set_cell(Vector2i(x, y), 0, Vector2i(0, 0))
+
+func _build_boundaries():
+	# Invisible walls around the map edges
+	var world_w = WORLD_W * TILE_SIZE
+	var world_h = WORLD_H * TILE_SIZE
+	var wall_thickness = 16.0
+
+	var edges = [
+		{ "pos": Vector2(world_w / 2, -wall_thickness / 2), "size": Vector2(world_w, wall_thickness) },      # top
+		{ "pos": Vector2(world_w / 2, world_h + wall_thickness / 2), "size": Vector2(world_w, wall_thickness) }, # bottom
+		{ "pos": Vector2(-wall_thickness / 2, world_h / 2), "size": Vector2(wall_thickness, world_h) },          # left
+		{ "pos": Vector2(world_w + wall_thickness / 2, world_h / 2), "size": Vector2(wall_thickness, world_h) }, # right
+	]
+	for edge in edges:
+		var body = StaticBody2D.new()
+		body.collision_layer = 1
+		var col = CollisionShape2D.new()
+		var rect = RectangleShape2D.new()
+		rect.size = edge["size"]
+		col.shape = rect
+		body.add_child(col)
+		body.position = edge["pos"]
+		add_child(body)
+
+func _build_doors():
+	var doors = [
+		{ "pos": Vector2(640, 710), "size": Vector2(80, 14), "target": "res://scenes/lobby.tscn", "label": "» 大厅", "spawn": "from_office" },
+	]
+	for d in doors:
+		var container = Node2D.new()
+		container.position = d["pos"]
+		container.name = "Door"
+		add_child(container)
+
+		var zone = Area2D.new()
+		zone.name = "Trigger"
+		zone.add_to_group("doors")
+		zone.set_meta("target_scene", d["target"])
+		zone.set_meta("spawn_marker", d["spawn"])
+		var shape = CollisionShape2D.new()
+		var rect = RectangleShape2D.new()
+		rect.size = d["size"]
+		shape.shape = rect
+		zone.add_child(shape)
+		container.add_child(zone)
+
+		var label = Label.new()
+		label.text = d["label"]
+		label.position = Vector2(0, -16)
+		label.add_theme_font_size_override("font_size", 11)
+		label.add_theme_color_override("font_color", Color(0.3, 0.9, 1, 0.8))
+		label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		container.add_child(label)
 
 func _setup_navigation():
 	var nav_poly = NavigationPolygon.new()
@@ -58,13 +124,20 @@ func _setup_navigation():
 
 func _spawn_interest_points():
 	var points = [
-		{ "name": "Coffee Machine", "pos": Vector2(500, 200), "tex": "res://assets/sprites/tiles/plant.png", "size": Vector2(24, 24) },
-		{ "name": "Water Cooler",   "pos": Vector2(500, 550), "tex": "res://assets/sprites/tiles/plant.png", "size": Vector2(24, 24) },
-		{ "name": "Printer",        "pos": Vector2(700, 200), "tex": "res://assets/sprites/tiles/desk.png", "size": Vector2(48, 24) },
-		{ "name": "Meeting Table",  "pos": Vector2(500, 300), "tex": "res://assets/sprites/tiles/desk.png", "size": Vector2(80, 40) },
-		{ "name": "Server Rack",    "pos": Vector2(1050, 600), "tex": "res://assets/sprites/tiles/server_rack.png", "size": Vector2(28, 48) },
-		{ "name": "Whiteboard",     "pos": Vector2(200, 200), "tex": "res://assets/sprites/tiles/wall.png", "size": Vector2(48, 10) },
-		{ "name": "Vending",        "pos": Vector2(150, 600), "tex": "res://assets/sprites/tiles/server_rack.png", "size": Vector2(28, 36) },
+	# NPC desks
+		{ "id": "desk_zara", "name": "Zara 的工位", "pos": Vector2(320, 600), "tex": "res://assets/sprites/tiles/desk.png", "size": Vector2(56, 32) },
+		{ "id": "desk_kron", "name": "Kron 的工位", "pos": Vector2(640, 400), "tex": "res://assets/sprites/tiles/desk.png", "size": Vector2(64, 36) },
+		{ "id": "desk_nyx",  "name": "Nyx 的办公室", "pos": Vector2(960, 250), "tex": "res://assets/sprites/tiles/desk.png", "size": Vector2(56, 32) },
+		{ "id": "desk_vex",  "name": "Vex 的办公室", "pos": Vector2(160, 350), "tex": "res://assets/sprites/tiles/desk.png", "size": Vector2(60, 34) },
+		{ "id": "desk_pip",  "name": "Pip 的工位", "pos": Vector2(800, 650), "tex": "res://assets/sprites/tiles/desk.png", "size": Vector2(52, 30) },
+		# Shared objects
+		{ "id": "coffee_machine", "name": "咖啡机", "pos": Vector2(500, 200), "tex": "res://assets/sprites/tiles/plant.png", "size": Vector2(24, 24) },
+		{ "id": "water_cooler", "name": "饮水机", "pos": Vector2(500, 550), "tex": "res://assets/sprites/tiles/plant.png", "size": Vector2(24, 24) },
+		{ "id": "printer", "name": "打印机", "pos": Vector2(700, 200), "tex": "res://assets/sprites/tiles/desk.png", "size": Vector2(48, 24) },
+		{ "id": "meeting_table", "name": "会议桌", "pos": Vector2(500, 300), "tex": "res://assets/sprites/tiles/desk.png", "size": Vector2(80, 40) },
+		{ "id": "server_rack", "name": "服务器机柜", "pos": Vector2(1050, 600), "tex": "res://assets/sprites/tiles/server_rack.png", "size": Vector2(28, 48) },
+		{ "id": "whiteboard", "name": "白板", "pos": Vector2(200, 200), "tex": "res://assets/sprites/tiles/wall.png", "size": Vector2(48, 10) },
+		{ "id": "vending", "name": "自动售货机", "pos": Vector2(150, 600), "tex": "res://assets/sprites/tiles/server_rack.png", "size": Vector2(28, 36) },
 	]
 	for pt in points:
 		var container = Node2D.new()
@@ -72,7 +145,6 @@ func _spawn_interest_points():
 		container.name = pt["name"]
 		_interest_points.add_child(container)
 
-		# Sprite
 		var sprite = Sprite2D.new()
 		sprite.texture = load(pt["tex"])
 		sprite.position = Vector2.ZERO
@@ -81,7 +153,6 @@ func _spawn_interest_points():
 		sprite.z_index = -1
 		container.add_child(sprite)
 
-		# Collision body on layer 1 — player and NPC both detect layer 1
 		var body = StaticBody2D.new()
 		body.collision_layer = 1
 		var col_shape = CollisionShape2D.new()
@@ -91,12 +162,22 @@ func _spawn_interest_points():
 		body.add_child(col_shape)
 		container.add_child(body)
 
-		# Navigation obstacle
 		var obs = NavigationObstacle2D.new()
 		obs.radius = max(pt["size"].x, pt["size"].y) / 1.5
 		container.add_child(obs)
 
-		# Label
+		var zone = Area2D.new()
+		zone.name = "InteractZone"
+		zone.add_to_group("interactable")
+		zone.set_meta("object_id", pt["id"])
+		zone.set_meta("label", pt["name"])
+		var zone_shape = CollisionShape2D.new()
+		var circle = CircleShape2D.new()
+		circle.radius = 60.0
+		zone_shape.shape = circle
+		zone.add_child(zone_shape)
+		container.add_child(zone)
+
 		var label = Label.new()
 		label.text = pt["name"]
 		label.position = Vector2(0, -pt["size"].y / 2 - 16)
@@ -117,9 +198,25 @@ func _spawn_npcs():
 		npc.get_node("Sprite2D").texture = load(def["tex"])
 		_npc_container.add_child(npc)
 
+func _spawn_ui():
+	var inv = _inv_ui_scene.instantiate()
+	inv.name = "InventoryUI"
+	add_child(inv)
+
+	var obj = _obj_ui_scene.instantiate()
+	obj.name = "ObjectUI"
+	add_child(obj)
+
+	var iu = load("res://scenes/inspect_ui.tscn").instantiate()
+	iu.name = "InspectUI"
+	add_child(iu)
+
+	var cl = load("res://scenes/chatlog_ui.tscn").instantiate()
+	cl.name = "ChatLogUI"
+	add_child(cl)
+
 func _on_npc_list_received(data, error: bool):
 	if error:
-		print("[Main] Failed to fetch NPC list from backend")
 		return
 	var npcs = data.get("npcs", [])
 	for npc_data in npcs:
@@ -129,3 +226,8 @@ func _on_npc_list_received(data, error: bool):
 			node.npc_id = npc_data["npc_id"]
 			node.npc_name = npc_data["name"]
 			node.npc_role = npc_data["role"]
+
+	# Hide loading screen
+	if _loading_screen:
+		_loading_screen.finish()
+		_loading_screen = null

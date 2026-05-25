@@ -26,6 +26,11 @@ tile_set = SubResource("tileset")
 [node name="NpcBehavior" type="Node2D" parent="."]
 script = ExtResource("5_behavior")
 
+[node name="SpawnPoints" type="Node2D" parent="."]
+
+[node name="from_lobby" type="Marker2D" parent="SpawnPoints"]
+position = Vector2(640, 560)
+
 [node name="NPCs" type="Node2D" parent="."]
 
 [node name="Player" parent="." instance=ExtResource("2_player")]

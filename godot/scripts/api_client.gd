@@ -34,12 +34,49 @@ func fetch_npc_chat(npc_a: String, npc_b: String, callback: Callable) -> void:
 	var headers = ["Content-Type: application/json"]
 	req.request(url, headers, HTTPClient.METHOD_POST, JSON.stringify(body))
 
+func save_history(npc_id: String, messages: Array, callback: Callable) -> void:
+	var body = {
+		"player_id": Globals.player_id,
+		"npc_id": npc_id,
+		"messages": messages
+	}
+	var req = _make_request(callback)
+	var url = Globals.backend_url + "/api/history/save"
+	var headers = ["Content-Type: application/json"]
+	req.request(url, headers, HTTPClient.METHOD_POST, JSON.stringify(body))
+
+func load_history(npc_id: String, callback: Callable) -> void:
+	var req = _make_request(callback)
+	req.request(Globals.backend_url + "/api/history/load/%s/%s" % [Globals.player_id, npc_id])
+
+func fetch_player(player_id: String, callback: Callable) -> void:
+	var req = _make_request(callback)
+	req.request(Globals.backend_url + "/api/player/" + player_id)
+
+func interact_object(object_id: String, action: String, callback: Callable) -> void:
+	var body = {"player_id": Globals.player_id, "object_id": object_id, "action": action}
+	var req = _make_request(callback)
+	var url = Globals.backend_url + "/api/object/interact"
+	var headers = ["Content-Type: application/json"]
+	req.request(url, headers, HTTPClient.METHOD_POST, JSON.stringify(body))
+
+func fetch_objects(callback: Callable) -> void:
+	var req = _make_request(callback)
+	req.request(Globals.backend_url + "/api/object/list")
+
 func fetch_logs(npc_id: String, limit: int, callback: Callable) -> void:
 	var url = Globals.backend_url + "/api/logs?limit=%d" % limit
 	if npc_id != "":
 		url += "&npc_id=" + npc_id
 	var req = _make_request(callback)
 	req.request(url)
+
+func cancel_all():
+	# Called before scene transition to prevent callbacks on freed nodes
+	for child in get_children():
+		if child is HTTPRequest:
+			child.cancel_request()
+			child.queue_free()
 
 func _make_request(callback: Callable) -> HTTPRequest:
 	var req = HTTPRequest.new()
